@@ -16,7 +16,7 @@ An Azure Monitor Workbook for diagnosing CPU/capacity issues on **Logic Apps Sta
 
 ### Option 1 — One-click (recommended for customers)
 
-[![Deploy To Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FTrevor-Davis%2Flogicapps-cpu-troubleshooting-workbook%2Fmain%2Fazuredeploy.json)
+[![Deploy To Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FTrevor-Davis%2Flogicapps-cpu-troubleshooting-workbook%2Fmaster%2Fazuredeploy.json)
 
 Click the button, pick your Subscription + Resource Group, and deploy. The workbook will appear under **Monitor → Workbooks** in that resource group.
 
