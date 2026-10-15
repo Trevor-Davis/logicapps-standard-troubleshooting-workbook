@@ -17,15 +17,15 @@ An Azure Monitor Workbook for diagnosing issues on **Logic Apps Standard** (WS-1
 
 ### Option 1 — One-click (recommended for customers)
 
-[![Deploy To Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FTrevor-Davis%2Flogicapps-cpu-troubleshooting-workbook%2Fmaster%2Fazuredeploy.json)
+[![Deploy To Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FTrevor-Davis%2Flogicapps-standard-troubleshooting-workbook%2Fmaster%2Fazuredeploy.json)
 
 Click the button, pick your Subscription + Resource Group, and deploy. The workbook will appear under **Monitor → Workbooks** in that resource group.
 
 ### Option 2 — Azure CLI
 
 ```powershell
-git clone https://github.com/Trevor-Davis/logicapps-cpu-troubleshooting-workbook.git
-cd logicapps-cpu-troubleshooting-workbook
+git clone https://github.com/Trevor-Davis/logicapps-standard-troubleshooting-workbook.git
+cd logicapps-standard-troubleshooting-workbook
 
 az login
 az group create --name "your-rg" --location "eastus"   # skip if the RG already exists
