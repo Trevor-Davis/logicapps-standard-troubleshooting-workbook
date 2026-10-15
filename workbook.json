@@ -4,7 +4,7 @@
     {
       "type": 1,
       "content": {
-        "json": "# Logic Apps Standard — CPU & Capacity Troubleshooting Dashboard\n\nImport this workbook, select your **Subscription**, **App Service Plan (WS-1/WS-2/WS-3)**, **Logic App / Function App**, backing **Storage Account**, and (optionally) **Cosmos DB account** below. All panels are scoped to your selections.\n\n**What this answers:**\n- Is the App Service Plan CPU/Memory genuinely pegged, and when did it start?\n- Is a trigger or workflow looping/retrying even though nothing shows as \"active\"?\n- Is the backing storage account throttling (429s), causing the host to spin?\n- Is Cosmos DB RU-throttling causing retry storms?\n\n**On historical data:** the metrics in Sections 1-4 (CPU%, Queue Length, Function executions, Storage/Cosmos metrics) are **platform metrics Azure collects automatically for every resource, retained 93 days** — this works retroactively, even for dates before this workbook was imported. Default time range below is set to 14 days; widen it up to 90 days using the picker to see the full pre-deployment history.\n\n**What does NOT retroactively exist:** detailed diagnostic/trigger-level logs and Application Insights telemetry only start flowing from the moment Diagnostic Settings / App Insights are enabled on the resource — if that wasn't already on, there's no historical detail at that granularity, only the coarse metrics above.\n\n> Tip: Pin this workbook to a dashboard and set auto-refresh to 5 min during the pre-go-live window."
+        "json": "# Logic Apps Standard — Troubleshooting Dashboard\n\nImport this workbook, select your **Subscription**, **App Service Plan (WS-1/WS-2/WS-3)**, **Logic App / Function App**, backing **Storage Account**, (optionally) **Cosmos DB account**, and (optionally) a **Log Analytics Workspace** below. All panels are scoped to your selections.\n\n**What this answers:**\n- Which workflow runs are failing, and what's the error? (requires Log Analytics — see Section 1)\n- Is the App Service Plan CPU/Memory genuinely pegged, and when did it start?\n- Is a trigger or workflow looping/retrying even though nothing shows as \"active\"?\n- Is the backing storage account throttling (429s), causing the host to spin?\n- Is Cosmos DB RU-throttling causing retry storms?\n\n**On historical data:** the metrics in Sections 1-4 (CPU%, Queue Length, Function executions, Storage/Cosmos metrics) are **platform metrics Azure collects automatically for every resource, retained 93 days** — this works retroactively, even for dates before this workbook was imported. Default time range below is set to 14 days; widen it up to 90 days using the picker to see the full pre-deployment history.\n\n**What does NOT retroactively exist:** detailed diagnostic/trigger-level logs and Application Insights telemetry only start flowing from the moment Diagnostic Settings / App Insights are enabled on the resource — if that wasn't already on, there's no historical detail at that granularity, only the coarse metrics above.\n\n> Tip: Pin this workbook to a dashboard and set auto-refresh to 5 min during the pre-go-live window."
       },
       "name": "text - intro"
     },
@@ -74,6 +74,19 @@
             "resourceType": "microsoft.resourcegraph/resources"
           },
           {
+            "id": "logworkspace-param",
+            "version": "KqlParameterItem/1.0",
+            "name": "LogAnalyticsWorkspace",
+            "label": "Log Analytics Workspace (optional — needed for Section 1)",
+            "type": 5,
+            "isRequired": false,
+            "query": "Resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| where subscriptionId == '{Subscription:id}'\n| project value = id, label = name\n| order by label asc",
+            "crossComponentResources": ["{Subscription}"],
+            "typeSettings": { "additionalResourceOptions": [], "showDefault": false },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
             "id": "timerange-param",
             "version": "KqlParameterItem/1.0",
             "name": "TimeRange",
@@ -104,7 +117,42 @@
     {
       "type": 1,
       "content": {
-        "json": "## 1. App Service Plan — CPU & Memory\nSustained >80-85% for 10+ min on a plan with no active workflows is the key red flag."
+        "json": "## 1. Workflow Run History & Errors\n**Requires:** Diagnostic Settings on the Logic App sending `WorkflowRuntime` logs to the **Log Analytics Workspace** selected above. If this section returns nothing, either diagnostics aren't flowing yet (see Section 6) or your workspace uses a different table/column schema than assumed below.\n\n**This is a starting query, not a guaranteed-exact one** — exact column names vary depending on whether your Diagnostic Settings export as \"Azure diagnostics\" (classic, table `AzureDiagnostics`) or \"resource-specific\" (dedicated table, commonly `LogicAppWorkflowRuntime`). The query below searches both so it works either way; if it returns rows, inspect the raw columns in the **Logs** blade to refine filters further."
+      },
+      "name": "text - section-runs"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "search in (AzureDiagnostics, LogicAppWorkflowRuntime) _ResourceId =~ \"{LogicApp}\"\n| where Level in (\"Error\", \"Warning\") or tostring(column_ifexists(\"status_s\", \"\")) in (\"Failed\", \"TimedOut\", \"Aborted\")\n| project TimeGenerated, Level, Type, Message = coalesce(column_ifexists(\"Message\", \"\"), column_ifexists(\"properties_message_s\", \"\")), Status = column_ifexists(\"status_s\", \"\")\n| order by TimeGenerated desc\n| take 200",
+        "size": 0,
+        "title": "Failed / errored / warning log entries (last 200)",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": ["{LogAnalyticsWorkspace}"],
+        "visualization": "table"
+      },
+      "name": "query - workflow errors"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "search in (AzureDiagnostics, LogicAppWorkflowRuntime) _ResourceId =~ \"{LogicApp}\"\n| where Level in (\"Error\", \"Warning\") or tostring(column_ifexists(\"status_s\", \"\")) in (\"Failed\", \"TimedOut\", \"Aborted\")\n| summarize Count = count() by bin(TimeGenerated, 15m), Level\n| order by TimeGenerated asc",
+        "size": 0,
+        "title": "Error/warning volume over time — spikes here should correlate with CPU spikes in Section 2",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": ["{LogAnalyticsWorkspace}"],
+        "visualization": "timechart"
+      },
+      "name": "query - workflow errors timechart"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## 2. App Service Plan — CPU & Memory\nSustained >80-85% for 10+ min on a plan with no active workflows is the key red flag."
       },
       "name": "text - section1"
     },
@@ -144,7 +192,7 @@
     {
       "type": 1,
       "content": {
-        "json": "## 2. Logic App / Function host — execution & duration\nA trigger firing far more often than expected (recurrence misconfigured, polling trigger stuck) shows up here even if the workflow displays as \"disabled\"."
+        "json": "## 3. Logic App / Function host — execution & duration\nA trigger firing far more often than expected (recurrence misconfigured, polling trigger stuck) shows up here even if the workflow displays as \"disabled\"."
       },
       "name": "text - section2"
     },
@@ -185,7 +233,7 @@
     {
       "type": 1,
       "content": {
-        "json": "## 3. Backing Storage Account — throttling check\nLogic Apps Standard relies on `WEBSITE_CONTENTAZUREFILECONNECTIONSTRING`. Storage throttling (429s) or high latency here causes the Functions host to spin and retry — this shows up as CPU with no visible workflow run."
+        "json": "## 4. Backing Storage Account — throttling check\nLogic Apps Standard relies on `WEBSITE_CONTENTAZUREFILECONNECTIONSTRING`. Storage throttling (429s) or high latency here causes the Functions host to spin and retry — this shows up as CPU with no visible workflow run."
       },
       "name": "text - section3"
     },
@@ -224,7 +272,7 @@
     {
       "type": 1,
       "content": {
-        "json": "## 4. Cosmos DB backend — RU throttling (if applicable)\nIf a query or change feed is hitting RU limits, Logic Apps retries aggressively — burning CPU with no obvious \"workflow run\" to point at."
+        "json": "## 5. Cosmos DB backend — RU throttling (if applicable)\nIf a query or change feed is hitting RU limits, Logic Apps retries aggressively — burning CPU with no obvious \"workflow run\" to point at."
       },
       "name": "text - section4"
     },
@@ -263,7 +311,7 @@
     {
       "type": 1,
       "content": {
-        "json": "## 5. Recommended alert rules (set these up once, not just view)\n\n| Alert | Scope | Condition | Why |\n|---|---|---|---|\n| High sustained CPU | App Service Plan | CPU Percentage (Avg) > 85% for 10 min | Catches the exact \"steady near-100%\" pattern reported |\n| Queue buildup | App Service Plan | Http Queue Length > 0 sustained | Confirms host-level stall vs. real traffic |\n| Storage throttling | Storage Account | Transactions (429 split) > 0 | Root-cause signal, not visible elsewhere |\n| Cosmos RU throttling | Cosmos DB | Normalized RU Consumption > 90% | Root-cause signal for retry storms |\n| Function error spike | Logic App / Function App | Http5xx > 5 in 5 min | Confirms trigger/dependency failures |\n\n**⚠️ Action needed now, not after go-live:** if **Diagnostic Settings** are not already enabled on the Logic App resource, detailed trigger-level logs and exception traces are **not being captured at all** — there is no historical backfill once you turn this on. Every day this stays off is a day of log detail you'll never get back if the issue recurs.\n\n**Enable it today:** Logic App resource → **Diagnostic settings** → **Add diagnostic setting** → check **AllMetrics** + **WorkflowRuntime** (or **FunctionAppLogs**) → destination **Send to Log Analytics workspace**. Takes under 5 minutes and starts the clock immediately — with 1.5 weeks to go-live, every day of logs collected now is a day you won't have to reconstruct from coarse metrics alone later."
+        "json": "## 6. Recommended alert rules (set these up once, not just view)\n\n| Alert | Scope | Condition | Why |\n|---|---|---|---|\n| High sustained CPU | App Service Plan | CPU Percentage (Avg) > 85% for 10 min | Catches the exact \"steady near-100%\" pattern reported |\n| Queue buildup | App Service Plan | Http Queue Length > 0 sustained | Confirms host-level stall vs. real traffic |\n| Storage throttling | Storage Account | Transactions (429 split) > 0 | Root-cause signal, not visible elsewhere |\n| Cosmos RU throttling | Cosmos DB | Normalized RU Consumption > 90% | Root-cause signal for retry storms |\n| Function error spike | Logic App / Function App | Http5xx > 5 in 5 min | Confirms trigger/dependency failures |\n| Workflow run failures | Log Analytics (scheduled query rule, not a metric alert) | Count of Failed/TimedOut runs > 0 in 15 min | Direct signal from Section 1 — catches failures even when CPU/metrics look normal |\n\n**⚠️ Action needed now, not after go-live:** if **Diagnostic Settings** are not already enabled on the Logic App resource, detailed trigger-level logs and exception traces (including everything Section 1 depends on) are **not being captured at all** — there is no historical backfill once you turn this on. Every day this stays off is a day of log detail you'll never get back if the issue recurs.\n\n**Enable it today:** Logic App resource → **Diagnostic settings** → **Add diagnostic setting** → check **AllMetrics** + **WorkflowRuntime** (or **FunctionAppLogs**) → destination **Send to Log Analytics workspace**. Takes under 5 minutes and starts the clock immediately — with limited time to go-live, every day of logs collected now is a day you won't have to reconstruct from coarse metrics alone later."
       },
       "name": "text - alerts"
     }

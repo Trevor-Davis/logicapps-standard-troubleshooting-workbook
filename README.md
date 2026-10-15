@@ -1,16 +1,17 @@
-# Logic Apps Standard — CPU & Capacity Troubleshooting Workbook
+# Logic Apps Standard — Troubleshooting Dashboard
 
-An Azure Monitor Workbook for diagnosing CPU/capacity issues on **Logic Apps Standard** (WS-1/WS-2/WS-3 App Service Plans) — built for the exact symptom pattern: sustained near-100% CPU on a plan with no actively running workflows.
+An Azure Monitor Workbook for diagnosing issues on **Logic Apps Standard** (WS-1/WS-2/WS-3 App Service Plans) — covering workflow run failures, CPU/capacity symptoms (e.g. sustained near-100% CPU with no actively running workflows), and the storage/Cosmos DB dependencies that often cause them.
 
-**Fully customer-agnostic** — no hardcoded subscription, resource group, or resource names. Every target (Subscription, App Service Plan, Logic App, Storage Account, Cosmos DB account) is picked from a live dropdown at open time.
+**Fully customer-agnostic** — no hardcoded subscription, resource group, or resource names. Every target (Subscription, App Service Plan, Logic App, Storage Account, Cosmos DB account, Log Analytics Workspace) is picked from a live dropdown at open time.
 
 ## What it covers
 
-1. **App Service Plan** — CPU %, Memory %, HTTP Queue Length
-2. **Logic App / Function host** — execution count/units, 5xx errors, response time (catches stuck/looping triggers even on workflows marked "disabled")
-3. **Backing Storage Account** — transactions, E2E latency (storage throttling is a common silent cause of CPU spin)
-4. **Cosmos DB backend** — normalized RU consumption, total RUs (RU-throttling retry storms)
-5. **Recommended alert rules** — a ready-to-configure table, plus an explicit call-out: historical platform metrics go back 93 days automatically, but detailed diagnostic logs only exist from when Diagnostic Settings are enabled — turn that on today if it isn't already.
+1. **Workflow Run History & Errors** — failed/timed-out/aborted runs and their error messages, pulled from Log Analytics (requires Diagnostic Settings — see item 6 below)
+2. **App Service Plan** — CPU %, Memory %, HTTP Queue Length
+3. **Logic App / Function host** — execution count/units, 5xx errors, response time (catches stuck/looping triggers even on workflows marked "disabled")
+4. **Backing Storage Account** — transactions, E2E latency (storage throttling is a common silent cause of CPU spin)
+5. **Cosmos DB backend** — normalized RU consumption, total RUs (RU-throttling retry storms)
+6. **Recommended alert rules** — a ready-to-configure table, plus an explicit call-out: historical platform metrics go back 93 days automatically, but detailed diagnostic logs (including everything Section 1 depends on) only exist from when Diagnostic Settings are enabled — turn that on today if it isn't already.
 
 ## Deploy
 
@@ -46,8 +47,13 @@ Open the workbook and select, from the dropdowns at the top:
 - **Logic App / Function App**
 - **Storage Account** (the one backing the Logic App)
 - **Cosmos DB account** (optional, if your workflows use Cosmos DB)
+- **Log Analytics Workspace** (optional, needed for the Workflow Run History & Errors section)
 
 All panels update automatically based on your selections — no editing required.
+
+## Workflow Run History caveat
+
+Section 1's query searches both `AzureDiagnostics` (classic export) and `LogicAppWorkflowRuntime` (resource-specific export) since the exact table/column schema depends on how your Diagnostic Settings are configured. It's a starting query, not a guaranteed-exact one — if it returns no rows, check the **Logs** blade directly to confirm which table your logs are landing in and adjust the query if needed.
 
 ## Historical data
 
